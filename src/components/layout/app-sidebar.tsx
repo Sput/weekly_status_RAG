@@ -45,6 +45,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import * as React from 'react';
 import { Icons } from '../icons';
+import { createClient } from '@/lib/supabase';
 import { OrgSwitcher } from '../org-switcher';
 export const company = {
   name: 'Acme Inc',
@@ -63,6 +64,7 @@ export default function AppSidebar() {
   const { isOpen } = useMediaQuery();
   const user = null; // Placeholder since we're not using Supabase auth helpers
   const router = useRouter();
+  const supabase = createClient();
   const handleSwitchTenant = (_tenantId: string) => {
     // Tenant switching functionality would be implemented here
   };
