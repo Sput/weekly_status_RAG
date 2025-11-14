@@ -1,17 +1,9 @@
 'use client';
 
 import PageContainer from '@/components/layout/page-container';
-import { Badge } from '@/components/ui/badge';
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardAction,
-  CardFooter
-} from '@/components/ui/card';
-import { IconTrendingDown, IconTrendingUp } from '@tabler/icons-react';
-import React, { useState, useEffect } from 'react';
+import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import React, { useEffect, useMemo, useState } from 'react';
+import { createClient } from '@/lib/supabase';
 
 export default function OverViewLayout({
   sales,
@@ -24,41 +16,57 @@ export default function OverViewLayout({
   bar_stats: React.ReactNode;
   area_stats: React.ReactNode;
 }) {
-  const [personal_finance_data, setPersonalFinanceData] = useState({
-    total_assets: 0
-  });
+  const supabase = useMemo(() => createClient(), []);
+  const [totalUpdates, setTotalUpdates] = useState<number | null>(null);
+  const [updates7d, setUpdates7d] = useState<number | null>(null);
+  const [activeUsers30d, setActiveUsers30d] = useState<number | null>(null);
+  const [lastUpdateAt, setLastUpdateAt] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchFinanceData = async () => {
-      try {
-        const response = await fetch('/api/python', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            action: 'run_script',
-            script: 'personal_finance_data.py',
-            data: {
-              args: ['--data', '{}']
-            }
-          })
-        });
+    const loadStats = async () => {
+      // Total updates
+      const totalRes = await supabase
+        .from('updates')
+        .select('id', { count: 'exact', head: true });
+      if (!totalRes.error) setTotalUpdates(totalRes.count ?? 0);
 
-        const result = await response.json();
-        console.log('Finance data result:', result);
-        if (result.success && result.data) {
-          setPersonalFinanceData(result.data);
-        } else {
-          console.error('Failed to fetch finance data:', result);
-        }
-      } catch (error) {
-        console.error('Error fetching finance data:', error);
+      // Updates in last 7 days
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const last7Res = await supabase
+        .from('updates')
+        .select('id', { count: 'exact', head: true })
+        .gte('created_at', sevenDaysAgo);
+      if (!last7Res.error) setUpdates7d(last7Res.count ?? 0);
+
+      // Active users in last 30 days (distinct user_id)
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const recentUsersRes = await supabase
+        .from('updates')
+        .select('user_id,created_at')
+        .gte('created_at', thirtyDaysAgo)
+        .limit(10000);
+      if (!recentUsersRes.error && recentUsersRes.data) {
+        const s = new Set((recentUsersRes.data as { user_id: string }[]).map((r) => r.user_id));
+        setActiveUsers30d(s.size);
+      } else {
+        setActiveUsers30d(0);
+      }
+
+      // Latest update time
+      const lastRes = await supabase
+        .from('updates')
+        .select('created_at')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!lastRes.error && lastRes.data) {
+        setLastUpdateAt(new Date(lastRes.data.created_at).toLocaleString());
+      } else {
+        setLastUpdateAt(null);
       }
     };
-
-    fetchFinanceData();
-  }, []);
+    loadStats();
+  }, [supabase]);
   return (
     <PageContainer>
       <div className='flex flex-1 flex-col space-y-2'>
@@ -67,96 +75,38 @@ export default function OverViewLayout({
             Hi, Welcome back 👋
           </h2>
         </div>
-
-        <div className='*:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card dark:*:data-[slot=card]:bg-card grid grid-cols-1 gap-4 *:data-[slot=card]:bg-gradient-to-t *:data-[slot=card]:shadow-xs md:grid-cols-2 lg:grid-cols-4'>
+        <div className='grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4'>
           <Card className='@container/card'>
             <CardHeader>
-              <CardDescription>Total Assets</CardDescription>
+              <CardDescription>Total Updates</CardDescription>
               <CardTitle className='text-2xl font-semibold tabular-nums @[250px]/card:text-3xl'>
-                ${personal_finance_data.total_assets}
+                {totalUpdates ?? '—'}
               </CardTitle>
-              <CardAction>
-                <Badge variant='outline'>
-                  <IconTrendingUp />
-                  +12.5%
-                </Badge>
-              </CardAction>
             </CardHeader>
-            <CardFooter className='flex-col items-start gap-1.5 text-sm'>
-              <div className='line-clamp-1 flex gap-2 font-medium'>
-                Trending up this month <IconTrendingUp className='size-4' />
-              </div>
-              <div className='text-muted-foreground'>
-                Visitors for the last 6 months
-              </div>
-            </CardFooter>
           </Card>
           <Card className='@container/card'>
             <CardHeader>
-              <CardDescription>New Customers</CardDescription>
+              <CardDescription>Updates (7 days)</CardDescription>
               <CardTitle className='text-2xl font-semibold tabular-nums @[250px]/card:text-3xl'>
-                1,234
+                {updates7d ?? '—'}
               </CardTitle>
-              <CardAction>
-                <Badge variant='outline'>
-                  <IconTrendingDown />
-                  -20%
-                </Badge>
-              </CardAction>
             </CardHeader>
-            <CardFooter className='flex-col items-start gap-1.5 text-sm'>
-              <div className='line-clamp-1 flex gap-2 font-medium'>
-                Down 20% this period <IconTrendingDown className='size-4' />
-              </div>
-              <div className='text-muted-foreground'>
-                Acquisition needs attention
-              </div>
-            </CardFooter>
           </Card>
           <Card className='@container/card'>
             <CardHeader>
-              <CardDescription>Active Accounts</CardDescription>
+              <CardDescription>Active Users (30 days)</CardDescription>
               <CardTitle className='text-2xl font-semibold tabular-nums @[250px]/card:text-3xl'>
-                45,678
+                {activeUsers30d ?? '—'}
               </CardTitle>
-              <CardAction>
-                <Badge variant='outline'>
-                  <IconTrendingUp />
-                  +12.5%
-                </Badge>
-              </CardAction>
             </CardHeader>
-            <CardFooter className='flex-col items-start gap-1.5 text-sm'>
-              <div className='line-clamp-1 flex gap-2 font-medium'>
-                Strong user retention <IconTrendingUp className='size-4' />
-              </div>
-              <div className='text-muted-foreground'>
-                Engagement exceed targets
-              </div>
-            </CardFooter>
           </Card>
           <Card className='@container/card'>
             <CardHeader>
-              <CardDescription>Growth Rate</CardDescription>
-              <CardTitle className='text-2xl font-semibold tabular-nums @[250px]/card:text-3xl'>
-                4.5%
+              <CardDescription>Last Update</CardDescription>
+              <CardTitle className='text-base font-normal @[250px]/card:text-lg'>
+                {lastUpdateAt ?? 'No updates yet'}
               </CardTitle>
-              <CardAction>
-                <Badge variant='outline'>
-                  <IconTrendingUp />
-                  +4.5%
-                </Badge>
-              </CardAction>
             </CardHeader>
-            <CardFooter className='flex-col items-start gap-1.5 text-sm'>
-              <div className='line-clamp-1 flex gap-2 font-medium'>
-                Steady performance increase{' '}
-                <IconTrendingUp className='size-4' />
-              </div>
-              <div className='text-muted-foreground'>
-                Meets growth projections
-              </div>
-            </CardFooter>
           </Card>
         </div>
         {/* <div className='grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-7'>
