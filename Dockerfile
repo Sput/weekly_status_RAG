@@ -3,6 +3,7 @@ WORKDIR /app
 
 # Install dependencies
 COPY package*.json ./
+COPY .npmrc ./
 RUN npm ci
 
 # Build the Next.js app
@@ -22,4 +23,3 @@ COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 
 CMD ["npm", "run", "start", "--", "-p", "3000"]
-
