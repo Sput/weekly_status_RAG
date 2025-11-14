@@ -28,7 +28,7 @@ type DebugInfo = {
 export default function ChatPage() {
   const supabase = useMemo(() => createClient(), []);
   const [query, setQuery] = useState('');
-  const [topK, setTopK] = useState(5);
+  const [topK, setTopK] = useState(3);
   const [loading, setLoading] = useState(false);
   const [snippets, setSnippets] = useState<Snippet[] | null>(null);
   const [answer, setAnswer] = useState<string | null>(null);
@@ -146,18 +146,22 @@ export default function ChatPage() {
         <CardContent>
           <form onSubmit={ask} className='grid gap-3'>
             <Textarea
-              placeholder='What happened this week?'
+              placeholder='Ask a question here about what people on your team are working on. Some topics might be ice cream, cereal, marathons, and hotdogs'
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               rows={4}
             />
             <div className='flex items-center gap-2'>
+              <label htmlFor='topk' className='text-sm text-muted-foreground'>
+                Top k results to augment
+              </label>
               <Input
                 type='number'
                 min={1}
                 max={20}
                 value={topK}
                 onChange={(e) => setTopK(Number(e.target.value))}
+                id='topk'
                 className='w-24'
               />
               <Button type='submit' disabled={!canAsk}>{loading ? 'Thinking…' : 'Ask'}</Button>
