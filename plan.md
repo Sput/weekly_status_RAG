@@ -87,6 +87,14 @@ plan.md
 
 ---
 
+### 📦 Step 8: Single Deploy Artifact ✅ Done
+- [x] Promote Docker Compose to the primary deployment path
+- [x] Keep FastAPI internal to the deployment artifact by default
+- [x] Add Compose-oriented scripts and healthchecks
+- [x] Update environment and deployment documentation
+
+---
+
 **Overall Progress:** `100%`
 
 (Progress dynamically increases as steps are completed.)

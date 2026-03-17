@@ -2,8 +2,7 @@
 
 import PageContainer from '@/components/layout/page-container';
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import React, { useEffect, useMemo, useState } from 'react';
-import { createClient } from '@/lib/supabase';
+import React, { useEffect, useState } from 'react';
 
 export default function OverViewLayout({
   sales,
@@ -16,7 +15,6 @@ export default function OverViewLayout({
   bar_stats: React.ReactNode;
   area_stats: React.ReactNode;
 }) {
-  const supabase = useMemo(() => createClient(), []);
   const [totalUpdates, setTotalUpdates] = useState<number | null>(null);
   const [updates7d, setUpdates7d] = useState<number | null>(null);
   const [activeUsers30d, setActiveUsers30d] = useState<number | null>(null);
@@ -24,49 +22,25 @@ export default function OverViewLayout({
 
   useEffect(() => {
     const loadStats = async () => {
-      // Total updates
-      const totalRes = await supabase
-        .from('updates')
-        .select('id', { count: 'exact', head: true });
-      if (!totalRes.error) setTotalUpdates(totalRes.count ?? 0);
-
-      // Updates in last 7 days
-      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      const last7Res = await supabase
-        .from('updates')
-        .select('id', { count: 'exact', head: true })
-        .gte('created_at', sevenDaysAgo);
-      if (!last7Res.error) setUpdates7d(last7Res.count ?? 0);
-
-      // Active users in last 30 days (distinct user_id)
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-      const recentUsersRes = await supabase
-        .from('updates')
-        .select('user_id,created_at')
-        .gte('created_at', thirtyDaysAgo)
-        .limit(10000);
-      if (!recentUsersRes.error && recentUsersRes.data) {
-        const s = new Set((recentUsersRes.data as { user_id: string }[]).map((r) => r.user_id));
-        setActiveUsers30d(s.size);
-      } else {
+      const response = await fetch('/api/overview/stats', { cache: 'no-store' });
+      if (!response.ok) {
+        setTotalUpdates(0);
+        setUpdates7d(0);
         setActiveUsers30d(0);
+        setLastUpdateAt(null);
+        return;
       }
 
-      // Latest update time
-      const lastRes = await supabase
-        .from('updates')
-        .select('created_at')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (!lastRes.error && lastRes.data) {
-        setLastUpdateAt(new Date(lastRes.data.created_at).toLocaleString());
-      } else {
-        setLastUpdateAt(null);
-      }
+      const data = await response.json();
+      setTotalUpdates(data.totalUpdates ?? 0);
+      setUpdates7d(data.updates7d ?? 0);
+      setActiveUsers30d(data.activeUsers30d ?? 0);
+      setLastUpdateAt(
+        data.lastUpdateAt ? new Date(data.lastUpdateAt).toLocaleString() : null
+      );
     };
     loadStats();
-  }, [supabase]);
+  }, []);
   return (
     <PageContainer>
       <div className='flex flex-1 flex-col space-y-2'>

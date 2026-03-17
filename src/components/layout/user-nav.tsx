@@ -12,7 +12,12 @@ import {
 import { UserAvatarProfile } from '@/components/user-avatar-profile';
 import { useRouter } from 'next/navigation';
 export function UserNav() {
-  const user: any = null; // Placeholder user object for build-time typing
+  const user = {
+    user_metadata: {
+      full_name: 'Guest'
+    },
+    email: 'No sign-in required'
+  };
   const router = useRouter();
   if (user) {
     return (
@@ -31,10 +36,10 @@ export function UserNav() {
           <DropdownMenuLabel className='font-normal'>
             <div className='flex flex-col space-y-1'>
               <p className='text-sm leading-none font-medium'>
-                {user.fullName}
+                {user.user_metadata.full_name}
               </p>
               <p className='text-muted-foreground text-xs leading-none'>
-                {user.emailAddresses[0].emailAddress}
+                {user.email}
               </p>
             </div>
           </DropdownMenuLabel>
@@ -50,10 +55,10 @@ export function UserNav() {
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={() => {
-              router.push('/auth/sign-in');
+              router.push('/dashboard/updates');
             }}
           >
-            Sign Out
+            Switch User Context
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

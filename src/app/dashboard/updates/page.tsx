@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from 'react';
-import { createClient } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -28,8 +27,6 @@ type AppUser = {
 };
 
 export default function UpdatesPage() {
-  const supabase = useMemo(() => createClient(), []);
-  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [content, setContent] = useState('');
   const [posting, setPosting] = useState(false);
   const [updates, setUpdates] = useState<UpdateRow[]>([]);
@@ -42,71 +39,51 @@ export default function UpdatesPage() {
     return map;
   }, [users]);
 
-  // Load session and initial updates
+  // Load initial updates and available user identities.
   useEffect(() => {
     const init = async () => {
-      const { data } = await supabase.auth.getUser();
-      setSessionUserId(data.user?.id ?? null);
-      await loadUsers();
-      await refreshUpdates();
+      await Promise.all([loadUsers(), refreshUpdates()]);
     };
     init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const refreshUpdates = async () => {
-    const { data, error } = await supabase
-      .from('updates')
-      .select('id,user_id,content,created_at')
-      .order('created_at', { ascending: false })
-      .limit(50);
-    if (!error && data) setUpdates(data as UpdateRow[]);
+    const response = await fetch('/api/updates?limit=50', { cache: 'no-store' });
+    if (!response.ok) {
+      return;
+    }
+    const data = (await response.json()) as UpdateRow[];
+    setUpdates(data);
   };
 
   const loadUsers = async () => {
-    const { data, error } = await supabase
-      .from('users')
-      .select('id,name,email')
-      .order('name', { ascending: true })
-      .limit(200);
-    if (!error && data) {
-      const rows = data as AppUser[];
-      setUsers(rows);
-      // Default selection: session user if exists in users, else first user
-      const defaultId = rows.find((u) => u.id === sessionUserId)?.id ?? rows[0]?.id;
-      setSelectedUserId(defaultId);
+    const response = await fetch('/api/users', { cache: 'no-store' });
+    if (!response.ok) {
+      return;
     }
+    const rows = (await response.json()) as AppUser[];
+    setUsers(rows);
+    setSelectedUserId((current) => current ?? rows[0]?.id);
   };
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedUserId) return;
-    if (!sessionUserId) {
-      alert('Please sign in first.');
-      return;
-    }
-    if (!content.trim()) return;
+    if (!selectedUserId || !content.trim()) return;
     setPosting(true);
     try {
-      // Always insert via Supabase client; RLS currently allows authenticated inserts for any user_id
-      const { data, error } = await supabase
-        .from('updates')
-        .insert([{ user_id: selectedUserId, content: content.trim() }])
-        .select('id,user_id,content,created_at')
-        .single();
-      if (error) throw error;
-      if (data) {
-        // Add the new update to the beginning of the list
-        setUpdates((prev) => [data as UpdateRow, ...prev]);
-        // Invoke Edge Function to process the update (e.g., create embedding)
-        try {
-          await supabase.functions.invoke('user_status_to_vector', {
-            body: { update_id: (data as UpdateRow).id, user_id: (data as UpdateRow).user_id, content: (data as UpdateRow).content }
-          });
-        } catch (fnErr) {
-          // Non-blocking: log function errors but don't interrupt UX
-          console.error('Edge function invocation failed:', fnErr);
-        }
+      const response = await fetch('/api/updates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: selectedUserId, content: content.trim() })
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to submit');
+      }
+
+      if (payload) {
+        setUpdates((prev) => [payload as UpdateRow, ...prev]);
       }
       setContent('');
     } catch (err: any) {
@@ -119,8 +96,15 @@ export default function UpdatesPage() {
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
     if (!q) return updates;
-    return updates.filter((u) => u.content.toLowerCase().includes(q) || u.user_id.toLowerCase().includes(q));
-  }, [filter, updates]);
+    return updates.filter((u) => {
+      const userName = userNameById.get(u.user_id)?.toLowerCase() ?? '';
+      return (
+        u.content.toLowerCase().includes(q) ||
+        u.user_id.toLowerCase().includes(q) ||
+        userName.includes(q)
+      );
+    });
+  }, [filter, updates, userNameById]);
 
   return (
     <div className='container mx-auto grid max-w-3xl gap-6 p-4'>
@@ -152,11 +136,11 @@ export default function UpdatesPage() {
               rows={5}
             />
             <div className='flex items-center gap-2'>
-              <Button type='submit' disabled={posting || !content.trim()}>
+              <Button type='submit' disabled={posting || !selectedUserId || !content.trim()}>
                 {posting ? 'Posting…' : 'Post Update'}
               </Button>
               <Input
-                placeholder='Filter by text or user id'
+                placeholder='Filter by text, user, or user id'
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
               />

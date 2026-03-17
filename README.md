@@ -69,13 +69,41 @@ git clone https://github.com/Sput/weekly_status_RAG.git
 - Create a `.env.local` file by copying the example environment file:
   `cp env.example.txt .env.local`
 - Add the required environment variables to the `.env.local` file.
-- `pnpm run dev`
+- Run the frontend: `pnpm run dev`
+- Run the backend separately for local development: `cd api && pip install -r requirements.txt && uvicorn main:app --reload --port 8787`
 
 ##### Environment Configuration Setup
 
 To configure the environment for this project, refer to the `env.example.txt` file. This file contains the necessary environment variables required for authentication and error tracking.
 
 You should now be able to access the application at http://localhost:3000.
+
+## Single Deploy Artifact
+
+The primary deployment path is now a single Docker Compose application:
+
+- `web`: Next.js app on port `3000`
+- `api`: internal FastAPI service on port `8787`
+- `web` talks to `api` over the Compose network using `http://api:8787`
+
+Basic flow:
+
+```bash
+cp env.example.txt .env
+docker compose up --build
+```
+
+Or via package scripts:
+
+```bash
+pnpm run docker:up
+```
+
+With this setup, only the web app is published externally. The FastAPI service stays internal to the deployment artifact by default.
+
+Important:
+- The `web` container also needs Supabase server-side credentials, because the Next.js server routes handle updates, user lookup, and overview stats on the server side.
+- Supported names are `SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_URL`, plus `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_SERVICE_KEY`.
 
 > [!WARNING]
 > After cloning or forking the repository, be cautious when pulling or syncing with the latest changes, as this may result in breaking conflicts.
@@ -84,4 +112,4 @@ Cheers! 🥂
 
 ## Deployment
 
-- Coolify: See `docs/deploy_coolify.md` for step‑by‑step instructions to deploy the FastAPI backend and Next.js frontend (either as two apps or via Docker Compose). Includes required environment variables and smoke tests.
+- Coolify: See `docs/deploy_coolify.md` for the recommended single Docker Compose deployment, plus the fallback two-app setup if you need independent scaling or separate hosts.

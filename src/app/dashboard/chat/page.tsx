@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useEffect } from 'react';
-import { createClient } from '@/lib/supabase';
 
 type Snippet = {
   id: number;
@@ -26,7 +25,6 @@ type DebugInfo = {
 } | null;
 
 export default function ChatPage() {
-  const supabase = useMemo(() => createClient(), []);
   const [query, setQuery] = useState('');
   const [topK, setTopK] = useState(3);
   const [loading, setLoading] = useState(false);
@@ -41,15 +39,12 @@ export default function ChatPage() {
   useEffect(() => {
     const loadUsers = async () => {
       try {
-        const { data, error } = await supabase
-          .from('users')
-          .select('id,name,email')
-          .order('name', { ascending: true })
-          .limit(500);
-        if (error) {
-          console.warn('[chat] failed to load users', error);
+        const response = await fetch('/api/users', { cache: 'no-store' });
+        if (!response.ok) {
+          console.warn('[chat] failed to load users', response.status);
           return;
         }
+        const data = await response.json();
         const map: Record<string, string> = {};
         (data || []).forEach((u: any) => {
           map[u.id] = u.name || u.email || u.id;
@@ -61,7 +56,6 @@ export default function ChatPage() {
       }
     };
     loadUsers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const ask = async (e: React.FormEvent) => {

@@ -2,8 +2,8 @@
 
 This repo contains a Next.js frontend and a FastAPI backend. You can deploy them on Coolify in two ways:
 
-- Recommended: Two separate apps (simplest)
-- Alternative: Single Docker Compose app (internal networking)
+- Recommended: Single Docker Compose app (one deployable artifact)
+- Alternative: Two separate apps (independent deploys)
 
 ---
 
@@ -17,7 +17,36 @@ This repo contains a Next.js frontend and a FastAPI backend. You can deploy them
 
 ---
 
-## 2) Two‑App Deploy (Recommended)
+## 2) Single Docker Compose App (Recommended)
+
+This repo includes `Dockerfile`, `api/Dockerfile`, and `docker-compose.yml`.
+
+1. New → Application → Git Repository
+2. Choose Docker Compose and point it at `docker-compose.yml`.
+3. Set environment variables for the app:
+   - `NEXT_PUBLIC_SUPABASE_URL=<your supabase url>`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY=<your supabase anon key>`
+   - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+   - `OPENAI_API_KEY` (optional)
+   - `EMBEDDING_MODEL=text-embedding-3-small` (optional)
+   - `LLM_MODEL=gpt-4o-mini` (optional)
+   - Optional `CORS_ALLOW_ORIGINS=*`
+   - Leave `NEXT_PUBLIC_BACKEND_URL` unset unless you intentionally want to override the internal Compose default of `http://api:8787`.
+4. Deploy.
+5. Map only the `web` service to a public URL. Keep `api` internal unless you explicitly need direct access.
+
+Important:
+- The `web` service needs Supabase server-side credentials too, not just the `api` service. The Next.js server routes read and write updates directly on the server side.
+- Supported names are `SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_URL`, plus `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_SERVICE_KEY`.
+
+Smoke tests:
+- `<frontend-url>/` loads app.
+- `<frontend-url>/dashboard/chat` can POST to `/api/chat`.
+- Optional internal verification: inspect Compose healthchecks for both `web` and `api`.
+
+---
+
+## 3) Two‑App Deploy (Alternative)
 
 Deploy backend first, then frontend.
 
@@ -52,44 +81,13 @@ Verify: open `<backend-url>/healthz` → should return `{ "status": "ok" }`.
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY=<your supabase anon key>`
 5. Deploy and open the assigned frontend URL.
 
-Smoke test: open the Chat page, submit a question. Watch frontend logs for `[api/chat]` and backend logs for `[chat]`.
-
-Hardening (optional): Set backend `CORS_ALLOW_ORIGINS` to the exact frontend URL, then redeploy backend.
-
-Custom domains later: When you assign domains, update `NEXT_PUBLIC_BACKEND_URL` on the frontend to the backend domain; redeploy frontend. If you tightened CORS, update it to the new frontend domain and redeploy backend.
-
----
-
-## 3) Single Docker Compose App (Alternative)
-
-This repo includes `Dockerfile`, `api/Dockerfile`, and `docker-compose.yml`.
-
-Benefits:
-- Frontend calls backend via the internal Docker network (`http://api:8787`).
-- You don’t need to copy the backend URL into the frontend env.
-
-Steps:
-1. New → Docker Compose → connect this repo → pick `docker-compose.yml`.
-2. Set environment variables for the app:
-   - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
-   - `OPENAI_API_KEY` (optional)
-   - Optional `CORS_ALLOW_ORIGINS=*`
-   - You can leave `NEXT_PUBLIC_BACKEND_URL` unset; it defaults to `http://api:8787` in `docker-compose.yml`.
-3. Deploy. Map the `web` service to a public URL in Coolify (the `api` service can remain internal or be exposed too if desired).
-
-Smoke tests:
-- `<frontend-url>/` loads app.
-- `<frontend-url>/dashboard/chat` can POST to `/api/chat`.
-- Optional: expose API and open `<backend-url>/healthz` → `{ "status": "ok" }`.
-
 ---
 
 ## 4) Troubleshooting
 
 - Frontend 500 on `/api/chat` with `fetch failed`:
-  - Two‑App: `NEXT_PUBLIC_BACKEND_URL` incorrect or backend not running. Verify `<backend-url>/healthz`.
   - Compose: Check both services are healthy; `web` should reach `http://api:8787`.
+  - Two‑App: `NEXT_PUBLIC_BACKEND_URL` incorrect or backend not running. Verify `<backend-url>/healthz`.
 - Backend 502/500:
   - Check backend logs; verify `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`; set `OPENAI_API_KEY` for model answers.
 - Empty context:
@@ -100,8 +98,7 @@ Smoke tests:
 ## 5) Reference: Ports & Paths
 
 - Frontend container port: `3000` → serves Next.js
-- Backend container port: `8787` → serves FastAPI (`/chat`, `/healthz`)
+- Backend container port: `8787` → serves FastAPI (`/chat`, `/healthz`) inside the deployment artifact
 - Frontend → Backend:
-  - Two‑App: `NEXT_PUBLIC_BACKEND_URL=https://<backend-host>`
   - Compose: `NEXT_PUBLIC_BACKEND_URL=http://api:8787`
-
+  - Two‑App: `NEXT_PUBLIC_BACKEND_URL=https://<backend-host>`
