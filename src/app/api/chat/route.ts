@@ -8,6 +8,10 @@ type ChatSnippet = {
   similarity: number;
 };
 
+type EmbeddedUpdateRow = Omit<ChatSnippet, 'similarity'> & {
+  embedding: string | number[] | null;
+};
+
 type ChatDebug = {
   mode: 'similarity' | 'recency';
   reason: string;
@@ -16,7 +20,7 @@ type ChatDebug = {
 };
 
 type ServerConfig = {
-  backendBase: string;
+  externalBackendBase?: string;
   supabaseUrl?: string;
   serviceKey?: string;
   openAiKey?: string;
@@ -26,7 +30,7 @@ type ServerConfig = {
 
 function getConfig(): ServerConfig {
   return {
-    backendBase: process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8787',
+    externalBackendBase: process.env.EXTERNAL_CHAT_BACKEND_URL,
     supabaseUrl: process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL,
     serviceKey:
       process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY,
@@ -99,7 +103,46 @@ async function createEmbedding(config: ServerConfig, query: string): Promise<num
   return data?.data?.[0]?.embedding ?? null;
 }
 
-async function matchLatestUpdates(
+function parseVector(value: string | number[] | null): number[] | null {
+  if (Array.isArray(value)) {
+    return value;
+  }
+  if (!value) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) {
+    return null;
+  }
+
+  const vector = trimmed
+    .slice(1, -1)
+    .split(',')
+    .map((part) => Number(part));
+
+  return vector.every(Number.isFinite) ? vector : null;
+}
+
+function cosineSimilarity(a: number[], b: number[]) {
+  let dot = 0;
+  let aMagnitude = 0;
+  let bMagnitude = 0;
+
+  for (let i = 0; i < a.length; i += 1) {
+    dot += a[i] * b[i];
+    aMagnitude += a[i] * a[i];
+    bMagnitude += b[i] * b[i];
+  }
+
+  if (aMagnitude === 0 || bMagnitude === 0) {
+    return 0;
+  }
+
+  return dot / (Math.sqrt(aMagnitude) * Math.sqrt(bMagnitude));
+}
+
+async function matchUpdatesWithRpc(
   config: ServerConfig,
   embedding: number[],
   topK: number
@@ -108,7 +151,7 @@ async function matchLatestUpdates(
     return [];
   }
 
-  const res = await fetch(`${config.supabaseUrl}/rest/v1/rpc/match_latest_updates`, {
+  const res = await fetch(`${config.supabaseUrl}/rest/v1/rpc/match_updates`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${config.serviceKey}`,
@@ -127,6 +170,71 @@ async function matchLatestUpdates(
   }
 
   return (await res.json()) as ChatSnippet[];
+}
+
+async function matchUpdatesInApp(
+  config: ServerConfig,
+  embedding: number[],
+  topK: number
+): Promise<ChatSnippet[]> {
+  if (!config.supabaseUrl || !config.serviceKey) {
+    return [];
+  }
+
+  const limit = Math.max(50, Math.min(1000, topK * 50));
+  const url =
+    `${config.supabaseUrl}/rest/v1/updates?` +
+    `select=id,user_id,content,created_at,embedding&embedding=not.is.null&limit=${limit}`;
+
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${config.serviceKey}`,
+      'apikey': config.serviceKey,
+      'Accept': 'application/json'
+    },
+    cache: 'no-store'
+  });
+
+  if (!res.ok) {
+    return [];
+  }
+
+  const rows = (await res.json()) as EmbeddedUpdateRow[];
+  return rows
+    .map((row) => {
+      const rowEmbedding = parseVector(row.embedding);
+      if (!rowEmbedding || rowEmbedding.length !== embedding.length) {
+        return null;
+      }
+
+      return {
+        id: row.id,
+        user_id: row.user_id,
+        content: row.content,
+        created_at: row.created_at,
+        similarity: cosineSimilarity(rowEmbedding, embedding)
+      } satisfies ChatSnippet;
+    })
+    .filter((row): row is ChatSnippet => row !== null)
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, Math.max(1, topK));
+}
+
+async function matchUpdates(
+  config: ServerConfig,
+  embedding: number[],
+  topK: number
+): Promise<{ snippets: ChatSnippet[]; source: string }> {
+  const rpcSnippets = await matchUpdatesWithRpc(config, embedding, topK);
+  if (rpcSnippets.length > 0) {
+    return { snippets: rpcSnippets, source: 'next-rpc' };
+  }
+
+  return {
+    snippets: await matchUpdatesInApp(config, embedding, topK),
+    source: 'next-vector-scan'
+  };
 }
 
 async function createAnswer(
@@ -187,7 +295,7 @@ async function handleDirectChat(config: ServerConfig, query: string, topK: numbe
   let snippets: ChatSnippet[] = [];
   let debug: ChatDebug = {
     mode: 'recency',
-    reason: 'backend_unreachable',
+    reason: 'ok',
     source: 'next-rest',
     context_count: 0
   };
@@ -195,12 +303,13 @@ async function handleDirectChat(config: ServerConfig, query: string, topK: numbe
   if (config.openAiKey) {
     const embedding = await createEmbedding(config, query);
     if (embedding) {
-      snippets = await matchLatestUpdates(config, embedding, topK);
+      const matchResult = await matchUpdates(config, embedding, topK);
+      snippets = matchResult.snippets;
       if (snippets.length > 0) {
         debug = {
           mode: 'similarity',
-          reason: 'backend_unreachable',
-          source: 'next-rpc',
+          reason: 'ok',
+          source: matchResult.source,
           context_count: snippets.length
         };
       }
@@ -229,34 +338,20 @@ export async function POST(request: NextRequest) {
     const query = typeof body?.query === 'string' ? body.query : '';
     const topK = typeof body?.top_k === 'number' ? body.top_k : 5;
 
-    console.log('[api/chat] incoming', {
-      backendBase: config.backendBase,
-      queryLen: query.length,
-      top_k: topK
-    });
+    if (config.externalBackendBase) {
+      try {
+        const proxied = await proxyToBackend(config.externalBackendBase, body);
 
-    try {
-      const proxied = await proxyToBackend(config.backendBase, body);
-      console.log('[api/chat] backend response', { status: proxied.status });
-
-      if (proxied.ok) {
-        return NextResponse.json(JSON.parse(proxied.text), { status: 200 });
+        if (proxied.ok) {
+          return NextResponse.json(JSON.parse(proxied.text), { status: 200 });
+        }
+      } catch {
       }
-
-      console.warn('[api/chat] backend unavailable, falling back', {
-        status: proxied.status,
-        body: proxied.text.slice(0, 300)
-      });
-    } catch (err: any) {
-      console.warn('[api/chat] backend fetch failed, falling back', {
-        err: err?.message || 'fetch failed'
-      });
     }
 
     const fallback = await handleDirectChat(config, query, topK);
     return NextResponse.json(fallback, { status: 200 });
   } catch (err: any) {
-    console.error('[api/chat] route error', { err: err?.message || 'unknown error' });
     return NextResponse.json(
       { error: err?.message || 'proxy error' },
       { status: 500 }

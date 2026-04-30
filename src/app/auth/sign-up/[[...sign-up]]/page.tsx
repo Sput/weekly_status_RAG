@@ -1,28 +1,15 @@
 import { Metadata } from 'next';
-import SignUpViewPage from '@/features/auth/components/sign-up-view';
+import { SupabaseAuth } from '@/components/auth/supabase-auth';
 
 export const metadata: Metadata = {
-  title: 'Authentication | Sign Up',
-  description: 'Sign Up page for authentication.'
+  title: 'Sign up',
+  description: 'Create an account for Weekly Status.'
 };
 
 export default async function Page() {
-  let stars = 3000; // Default value
-
-  try {
-    const response = await fetch(
-      'https://api.github.com/repos/kiranism/next-shadcn-dashboard-starter',
-      {
-        next: { revalidate: 86400 }
-      }
-    );
-
-    if (response.ok) {
-      const data = await response.json();
-      stars = data.stargazers_count || stars; // Update stars if API response is valid
-    }
-  } catch (error) {
-    // Error fetching GitHub stars, using default value
-  }
-  return <SignUpViewPage stars={stars} />;
+  return (
+    <main className='bg-muted/30 flex min-h-screen items-center justify-center p-4'>
+      <SupabaseAuth mode='sign-up' />
+    </main>
+  );
 }

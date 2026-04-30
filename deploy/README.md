@@ -1,24 +1,18 @@
 # Deployment Guide
 
-Supabase (Database)
+Supabase Database
 
 - Apply SQL: run the files in `supabase/sql` (schema + functions).
-- Ensure `OPENAI_API_KEY` is stored in Vault as `OPENAI_API_KEY`.
+- Ensure `OPENAI_API_KEY` is available to the app if you want generated answers.
 - The trigger `trg_create_update_embedding` will populate embeddings on insert.
 
-FastAPI (Backend)
+Next.js App
 
-- Containerize or deploy to Render/Fly.io/Cloud Run.
-- Set env vars: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, `EMBEDDING_MODEL`, `LLM_MODEL`, `CORS_ALLOW_ORIGINS`.
-- Expose `/chat`.
-
-Next.js (Frontend)
-
-- Deploy to Vercel (or similar).
-- Set env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_BACKEND_URL` (point to backend).
+- Deploy the repo root as a single Next.js app.
+- Set env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and optionally `OPENAI_API_KEY`, `EMBEDDING_MODEL`, `LLM_MODEL`.
+- The app handles chat through `/api/chat`; no separate backend is required.
 
 Smoke Test
 
-- Sign in, post an update on `/updates`.
-- Ask a question on `/chat`; confirm context appears before answer.
-
+- Post an update on `/dashboard/updates`.
+- Ask a question on `/dashboard/updates`; confirm context appears before answer.

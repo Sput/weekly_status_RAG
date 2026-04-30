@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { ChatBox } from '@/components/chat-box';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -14,7 +15,7 @@ import {
 } from '@/components/ui/select';
 
 type UpdateRow = {
-  id: number;
+  id: number | string;
   user_id: string;
   content: string;
   created_at: string;
@@ -108,6 +109,8 @@ export default function UpdatesPage() {
 
   return (
     <div className='container mx-auto grid max-w-3xl gap-6 p-4'>
+      <ChatBox />
+
       <Card>
         <CardHeader>
           <CardTitle>Weekly Updates</CardTitle>

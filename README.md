@@ -69,8 +69,7 @@ git clone https://github.com/Sput/weekly_status_RAG.git
 - Create a `.env.local` file by copying the example environment file:
   `cp env.example.txt .env.local`
 - Add the required environment variables to the `.env.local` file.
-- Run the frontend: `pnpm run dev`
-- Run the backend separately for local development: `cd api && pip install -r requirements.txt && uvicorn main:app --reload --port 8787`
+- Run the app: `pnpm run dev`
 
 ##### Environment Configuration Setup
 
@@ -78,13 +77,13 @@ To configure the environment for this project, refer to the `env.example.txt` fi
 
 You should now be able to access the application at http://localhost:3000.
 
-## Single Deploy Artifact
+## Single App Deployment
 
-The primary deployment path is now a single Docker Compose application:
+The primary deployment path is now one Next.js application:
 
-- `web`: Next.js app on port `3000`
-- `api`: internal FastAPI service on port `8787`
-- `web` talks to `api` over the Compose network using `http://api:8787`
+- Next.js serves the UI on port `3000`
+- Next.js API routes handle updates, users, chat retrieval, and LLM calls
+- No separate FastAPI backend is required for the app to run
 
 Basic flow:
 
@@ -99,10 +98,11 @@ Or via package scripts:
 pnpm run docker:up
 ```
 
-With this setup, only the web app is published externally. The FastAPI service stays internal to the deployment artifact by default.
+With this setup, there is only one app/container to publish externally.
 
 Important:
-- The `web` container also needs Supabase server-side credentials, because the Next.js server routes handle updates, user lookup, and overview stats on the server side.
+- The app needs Supabase server-side credentials, because the Next.js server routes handle updates, user lookup, overview stats, and chat retrieval on the server side.
+- The legacy `api/` FastAPI service remains in the repo for reference or separate experimentation, but deployment does not depend on it.
 - Supported names are `SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_URL`, plus `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_SERVICE_KEY`.
 
 > [!WARNING]

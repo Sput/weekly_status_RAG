@@ -1,104 +1,53 @@
 # Deploy on Coolify
 
-This repo contains a Next.js frontend and a FastAPI backend. You can deploy them on Coolify in two ways:
+This repo now deploys as one Next.js application. The legacy `api/` FastAPI service remains in the repository for reference or experimentation, but the production app does not need a second backend application.
 
-- Recommended: Single Docker Compose app (one deployable artifact)
-- Alternative: Two separate apps (independent deploys)
-
----
-
-## 1) Prerequisites
+## Prerequisites
 
 1. A running Coolify instance with access to your Git repository.
 2. Supabase project credentials:
-   - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (backend)
-   - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (frontend)
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `SUPABASE_URL`
+   - `SUPABASE_SERVICE_ROLE_KEY`
 3. Optional but recommended: `OPENAI_API_KEY` for full RAG answers.
 
----
+## Docker Compose App
 
-## 2) Single Docker Compose App (Recommended)
+This repo includes a single-service `docker-compose.yml`.
 
-This repo includes `Dockerfile`, `api/Dockerfile`, and `docker-compose.yml`.
-
-1. New → Application → Git Repository
+1. New application -> Git Repository.
 2. Choose Docker Compose and point it at `docker-compose.yml`.
-3. Set environment variables for the app:
+3. Set environment variables:
    - `NEXT_PUBLIC_SUPABASE_URL=<your supabase url>`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY=<your supabase anon key>`
-   - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
-   - `OPENAI_API_KEY` (optional)
-   - `EMBEDDING_MODEL=text-embedding-3-small` (optional)
-   - `LLM_MODEL=gpt-4o-mini` (optional)
-   - Optional `CORS_ALLOW_ORIGINS=*`
-   - Leave `NEXT_PUBLIC_BACKEND_URL` unset unless you intentionally want to override the internal Compose default of `http://api:8787`.
+   - `SUPABASE_URL=<your supabase url>`
+   - `SUPABASE_SERVICE_ROLE_KEY=<your service role key>`
+   - `OPENAI_API_KEY=<your openai key>` optional
+   - `EMBEDDING_MODEL=text-embedding-3-small` optional
+   - `LLM_MODEL=gpt-4o-mini` optional
 4. Deploy.
-5. Map only the `web` service to a public URL. Keep `api` internal unless you explicitly need direct access.
+5. Map the `web` service on port `3000` to a public URL.
 
 Important:
-- The `web` service needs Supabase server-side credentials too, not just the `api` service. The Next.js server routes read and write updates directly on the server side.
-- Supported names are `SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_URL`, plus `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_SERVICE_KEY`.
 
-Smoke tests:
-- `<frontend-url>/` loads app.
-- `<frontend-url>/dashboard/chat` can POST to `/api/chat`.
-- Optional internal verification: inspect Compose healthchecks for both `web` and `api`.
+- Do not set `NEXT_PUBLIC_BACKEND_URL` for the single-app deployment.
+- `/api/chat` runs inside the Next.js app and uses Supabase/OpenAI directly from the server route.
+- Supported service-key names are `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_SERVICE_KEY`; prefer `SUPABASE_SERVICE_ROLE_KEY`.
 
----
+## Smoke Tests
 
-## 3) Two‑App Deploy (Alternative)
+- `<frontend-url>/` loads the app.
+- `<frontend-url>/api/chat/healthz` returns JSON with `mode: "next-direct"` and `ok: true`.
+- Post an update on `/dashboard/updates`.
+- Ask a question on `/dashboard/updates`; confirm context appears before answer.
 
-Deploy backend first, then frontend.
+## Troubleshooting
 
-### Backend (FastAPI)
-1. New → Application → Git Repository
-2. Repository: this repo; Branch: your deploy branch; Base directory: `api`
-3. Runtime/Build:
-   - Build command: `pip install -r requirements.txt`
-   - Start command: `uvicorn main:app --host 0.0.0.0 --port 8787`
-   - Container port: `8787`
-4. Environment variables:
-   - `SUPABASE_URL=<your supabase rest url>`
-   - `SUPABASE_SERVICE_ROLE_KEY=<your service role key>`
-   - `OPENAI_API_KEY=<your openai key>` (optional but recommended)
-   - `EMBEDDING_MODEL=text-embedding-3-small` (optional)
-   - `LLM_MODEL=gpt-4o-mini` (optional)
-   - `CORS_ALLOW_ORIGINS=*` (can tighten later)
-5. Deploy.
+- `/api/chat/healthz` returns `ok: false`: verify `SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_URL`, plus `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_SERVICE_KEY`.
+- Chat answers only by recency: set `OPENAI_API_KEY` and confirm the `match_latest_updates` SQL function exists.
+- Empty context: confirm Supabase vars are set and the database has updates.
 
-Verify: open `<backend-url>/healthz` → should return `{ "status": "ok" }`.
+## Optional External Backend
 
-### Frontend (Next.js)
-1. New → Application → Git Repository
-2. Repository: this repo; Branch: your deploy branch; Base directory: repo root
-3. Runtime/Build:
-   - Build command: `npm ci && npm run build`
-   - Start command: `npm run start -- -p 3000`
-   - Container port: `3000`
-4. Environment variables:
-   - `NEXT_PUBLIC_BACKEND_URL=<the backend URL from above>` (no trailing slash)
-   - `NEXT_PUBLIC_SUPABASE_URL=<your supabase url>`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY=<your supabase anon key>`
-5. Deploy and open the assigned frontend URL.
-
----
-
-## 4) Troubleshooting
-
-- Frontend 500 on `/api/chat` with `fetch failed`:
-  - Compose: Check both services are healthy; `web` should reach `http://api:8787`.
-  - Two‑App: `NEXT_PUBLIC_BACKEND_URL` incorrect or backend not running. Verify `<backend-url>/healthz`.
-- Backend 502/500:
-  - Check backend logs; verify `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`; set `OPENAI_API_KEY` for model answers.
-- Empty context:
-  - Ensure Supabase vars are set and your DB has updates.
-
----
-
-## 5) Reference: Ports & Paths
-
-- Frontend container port: `3000` → serves Next.js
-- Backend container port: `8787` → serves FastAPI (`/chat`, `/healthz`) inside the deployment artifact
-- Frontend → Backend:
-  - Compose: `NEXT_PUBLIC_BACKEND_URL=http://api:8787`
-  - Two‑App: `NEXT_PUBLIC_BACKEND_URL=https://<backend-host>`
+If you intentionally deploy a compatible external chat backend, set `EXTERNAL_CHAT_BACKEND_URL` on the Next.js app. The app will try that backend first and fall back to the built-in Next.js chat path if it is unavailable.

@@ -54,8 +54,28 @@ create trigger trg_create_embedding
 after insert on public.updates
 for each row execute function public.create_embedding();
 
--- Function: match_latest_updates
--- Returns the top N most similar latest-per-user updates to the given embedding
+-- Function: match_updates
+-- Returns the top N most similar updates to the given embedding.
+create or replace function public.match_updates(query_embedding vector(1536), match_count int)
+returns table (
+  id uuid,
+  user_id uuid,
+  content text,
+  created_at timestamptz,
+  similarity float4
+)
+language sql
+stable
+as $$
+  select u.id, u.user_id, u.content, u.created_at,
+    1 - (u.embedding <=> query_embedding) as similarity
+  from public.updates u
+  where u.embedding is not null
+  order by u.embedding <=> query_embedding
+  limit greatest(match_count, 1);
+$$;
+
+-- Legacy helper: same similarity search, but only across each user's latest update.
 create or replace function public.match_latest_updates(query_embedding vector(1536), match_count int)
 returns table (
   id uuid,

@@ -38,45 +38,37 @@ import {
   IconChevronsDown,
   IconCreditCard,
   IconLogout,
-  IconPhotoUp,
   IconUserCircle
 } from '@tabler/icons-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import * as React from 'react';
 import { Icons } from '../icons';
-import { OrgSwitcher } from '../org-switcher';
-export const company = {
-  name: 'Acme Inc',
-  logo: IconPhotoUp,
-  plan: 'Enterprise'
-};
+import { createClient } from '@/lib/supabase';
 
-const tenants = [
-  { id: '1', name: 'Acme Inc' },
-  { id: '2', name: 'Beta Corp' },
-  { id: '3', name: 'Gamma Ltd' }
-];
+type SidebarUser = {
+  email?: string;
+  user_metadata?: {
+    full_name?: string;
+    avatar_url?: string;
+  };
+} | null;
 
-export default function AppSidebar() {
+export default function AppSidebar({ user }: { user: SidebarUser }) {
   const pathname = usePathname();
   const { isOpen } = useMediaQuery();
-  const user = {
-    user_metadata: {
-      full_name: 'Guest'
-    },
-    email: 'No sign-in required'
-  };
   const router = useRouter();
-  const handleSwitchTenant = (_tenantId: string) => {
-    // Tenant switching functionality would be implemented here
-  };
-
-  const activeTenant = tenants[0];
 
   React.useEffect(() => {
     // Side effects based on sidebar state changes
   }, [isOpen]);
+
+  const handleSignOut = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push('/auth/sign-in');
+    router.refresh();
+  };
 
   return (
     <Sidebar collapsible='icon'>
@@ -194,9 +186,9 @@ export default function AppSidebar() {
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => router.push('/dashboard/updates')}>
+                <DropdownMenuItem onClick={handleSignOut}>
                   <IconLogout className='mr-2 h-4 w-4' />
-                  Switch User Context
+                  Sign out
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

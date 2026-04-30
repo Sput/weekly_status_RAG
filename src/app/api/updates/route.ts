@@ -16,6 +16,108 @@ function getServerConfig() {
   return { SUPABASE_URL, SERVICE_ROLE };
 }
 
+type UpdateRow = {
+  id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+  embedding?: string | null;
+};
+
+const VECTOR_FUNCTION_NAME = 'user_status_to_vector';
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function invokeVectorFunction(
+  config: NonNullable<ReturnType<typeof getServerConfig>>,
+  update: UpdateRow
+) {
+  const response = await fetch(
+    `${config.SUPABASE_URL}/functions/v1/${VECTOR_FUNCTION_NAME}`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${config.SERVICE_ROLE}`,
+        'apikey': config.SERVICE_ROLE,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        type: 'INSERT',
+        table: 'updates',
+        schema: 'public',
+        record: update,
+        old_record: null,
+        id: update.id,
+        update_id: update.id,
+        content: update.content
+      })
+    }
+  );
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    body: await response.text()
+  };
+}
+
+async function fetchUpdateEmbedding(
+  config: NonNullable<ReturnType<typeof getServerConfig>>,
+  updateId: string
+) {
+  const response = await fetch(
+    `${config.SUPABASE_URL}/rest/v1/updates?select=id,embedding&id=eq.${encodeURIComponent(updateId)}`,
+    {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${config.SERVICE_ROLE}`,
+        'apikey': config.SERVICE_ROLE,
+        'Accept': 'application/json'
+      },
+      cache: 'no-store'
+    }
+  );
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const rows = (await response.json()) as Array<{ id: string; embedding: string | null }>;
+  return rows[0]?.embedding ?? null;
+}
+
+async function waitForEmbeddingAfterVectorFunction(
+  config: NonNullable<ReturnType<typeof getServerConfig>>,
+  update: UpdateRow
+) {
+  let lastVectorFunction = {
+    ok: false,
+    status: 0
+  };
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const vectorFunction = await invokeVectorFunction(config, update).catch((err: any) => ({
+      ok: false,
+      status: 0,
+      body: err?.message || 'Vector function request failed'
+    }));
+    lastVectorFunction = {
+      ok: vectorFunction.ok,
+      status: vectorFunction.status
+    };
+
+    const embedding = await fetchUpdateEmbedding(config, update.id);
+    if (embedding) {
+      return { embedding, vectorFunction: lastVectorFunction };
+    }
+    await sleep(1000);
+  }
+
+  return { embedding: null, vectorFunction: lastVectorFunction };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const config = getServerConfig();
@@ -84,8 +186,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: text || 'Insert failed' }, { status: 502 });
     }
     try {
-      const json = JSON.parse(text);
-      return NextResponse.json(json[0] ?? null, { status: 201 });
+      const json = JSON.parse(text) as UpdateRow[];
+      const inserted = json[0] ?? null;
+      if (!inserted) {
+        return NextResponse.json(null, { status: 201 });
+      }
+
+      const { embedding, vectorFunction } = await waitForEmbeddingAfterVectorFunction(
+        config,
+        inserted
+      );
+
+      return NextResponse.json(
+        {
+          ...inserted,
+          embedding: embedding ?? inserted.embedding ?? null,
+          embedding_status: embedding ? 'ready' : 'missing',
+          vector_function: {
+            name: VECTOR_FUNCTION_NAME,
+            ok: vectorFunction.ok,
+            status: vectorFunction.status
+          }
+        },
+        { status: 201 }
+      );
     } catch {
       return new NextResponse(text, { status: 201, headers: { 'Content-Type': 'application/json' } });
     }

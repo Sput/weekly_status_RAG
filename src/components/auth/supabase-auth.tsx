@@ -13,7 +13,8 @@ import {
 } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 interface AuthFormProps {
   mode: 'sign-in' | 'sign-up';
@@ -26,7 +27,9 @@ export function SupabaseAuth({ mode }: AuthFormProps) {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
+  const next = searchParams.get('next') || '/dashboard/updates';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,7 +61,8 @@ export function SupabaseAuth({ mode }: AuthFormProps) {
         if (error) {
           setError(error.message);
         } else {
-          router.push('/dashboard/overview');
+          router.push(next);
+          router.refresh();
         }
       }
     } catch (err) {
@@ -71,11 +75,11 @@ export function SupabaseAuth({ mode }: AuthFormProps) {
   return (
     <Card className='w-full max-w-md'>
       <CardHeader>
-        <CardTitle>{mode === 'sign-in' ? 'Sign In' : 'Sign Up'}</CardTitle>
+        <CardTitle>{mode === 'sign-in' ? 'Sign in' : 'Create account'}</CardTitle>
         <CardDescription>
           {mode === 'sign-in'
-            ? 'Enter your credentials to access your account'
-            : 'Create a new account to get started'}
+            ? 'Use your Supabase account to access weekly updates.'
+            : 'Create a Supabase account to access weekly updates.'}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -120,10 +124,28 @@ export function SupabaseAuth({ mode }: AuthFormProps) {
             {loading
               ? 'Loading...'
               : mode === 'sign-in'
-                ? 'Sign In'
-                : 'Sign Up'}
+                ? 'Sign in'
+                : 'Create account'}
           </Button>
         </form>
+
+        <div className='text-muted-foreground mt-4 text-center text-sm'>
+          {mode === 'sign-in' ? (
+            <>
+              Need an account?{' '}
+              <Link href='/auth/sign-up' className='text-foreground underline underline-offset-4'>
+                Sign up
+              </Link>
+            </>
+          ) : (
+            <>
+              Already have an account?{' '}
+              <Link href='/auth/sign-in' className='text-foreground underline underline-offset-4'>
+                Sign in
+              </Link>
+            </>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
