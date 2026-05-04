@@ -83,7 +83,13 @@ export function SupabaseAuth({ mode }: AuthFormProps) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className='space-y-4'>
+        {mode === 'sign-in' && (
+          <p className='text-muted-foreground mb-4 text-sm'>
+            Please email me at paulknick at gmail dot com for credentials.
+          </p>
+        )}
+
+        <form onSubmit={handleSubmit} className='space-y-4' autoComplete='off'>
           <div className='space-y-2'>
             <Label htmlFor='email'>Email</Label>
             <Input
@@ -92,6 +98,7 @@ export function SupabaseAuth({ mode }: AuthFormProps) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder='Enter your email'
+              autoComplete='off'
               required
             />
           </div>
@@ -104,6 +111,7 @@ export function SupabaseAuth({ mode }: AuthFormProps) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder='Enter your password'
+              autoComplete='new-password'
               required
             />
           </div>
@@ -131,12 +139,7 @@ export function SupabaseAuth({ mode }: AuthFormProps) {
 
         <div className='text-muted-foreground mt-4 text-center text-sm'>
           {mode === 'sign-in' ? (
-            <>
-              Need an account?{' '}
-              <Link href='/auth/sign-up' className='text-foreground underline underline-offset-4'>
-                Sign up
-              </Link>
-            </>
+            null
           ) : (
             <>
               Already have an account?{' '}
